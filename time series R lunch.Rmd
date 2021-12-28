@@ -1,0 +1,223 @@
+---
+title: "Time Series R Lunch"
+author: "Josh"
+date: "10/30/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#Load Packages
+library(tseries)
+library(stats)
+library(forecast)
+library(lmtest)
+library(ggplot2)
+library(httr)
+library(jsonlite)
+library(Hmisc)
+library(TSA)
+```
+
+```{r}
+library(httr)
+library(jsonlite)
+
+#Load data
+rm(list = ls())
+
+endpoint = "https://api.stlouisfed.org/fred/"
+search_text = "LFAC64TTJPM647N"
+token = "7f08ba8b8f08c4a7d7a2db8316bbc259"
+series_id = "LFAC64TTJPM647N"
+
+url = paste0(endpoint, 
+             "series/observations?series_id=",series_id,
+             "&api_key=", 
+             token, "&file_type=json")
+print(url)
+
+#GET Request
+res = httr::GET(url)
+print(res)
+
+#Extract Content
+con = httr::content(res, as = "text", encoding = "UTF-8")
+print(con)
+
+#Parse Content
+tmp = jsonlite::fromJSON(con, flatten = TRUE)
+head(tmp)
+
+df = data.frame(tmp$observations)
+
+#Segment data to match what Professor provided
+df <- df[1:566,3:4]
+df$value <- as.numeric(df$value)
+```
+
+```{r}
+#Create Time Series
+ts_model <- ts(df$value, start=c(1968,1), end = c(2005,9), frequency = 12)
+plot(ts_model, xlab="Month",ylab="Population",main="Japanese Population: Aged 15-64")
+ts_fcast <- ts(df$value, start=c(2005,10), end = c(2015,2), frequency = 12)
+ts_total <- ts(df$value, start=c(1968,1), end = c(2015,2), frequency = 12)
+plot(ts_total, xlab="Month",ylab="Population",main="Japanese Population: Aged 15-64")
+```
+
+```{r}
+#Seasonal Dummies
+library(forecast)
+sdmod <- seasonaldummy(ts_model)
+sdfcast <- seasonaldummy(ts_fcast)
+sdtotal <- seasonaldummy(ts_total)
+
+sts_model <- cbind(ts_model, sdmod)
+sts_fcast <- cbind(ts_fcast, sdfcast)
+sd_total <- cbind(ts_total, sdtotal)
+```
+
+```{r}
+#Just a linear regression
+dfsts_model <- data.frame(sts_model)
+dfsts_model$ID <- seq.int(nrow(dfsts_model))
+mod1 <- lm(dfsts_model$ts_model ~ dfsts_model$ID)
+summary(mod1)
+AIC(mod1)
+BIC(mod1)
+```
+
+```{r}
+#Plot data
+plot(dfsts_model$ID, dfsts_model$ts_model, xlab="Month",ylab="Population",main="Japanese Population: Aged 15-64", type="l")
+abline(lm(dfsts_model$ts_model ~ dfsts_model$ID))
+```
+
+```{r}
+mod2 <- lm(dfsts_model$ts_model ~ dfsts_model$ID + dfsts_model$sdmod.Jan + dfsts_model$sdmod.Feb + dfsts_model$sdmod.Mar + dfsts_model$sdmod.Apr + dfsts_model$sdmod.May + dfsts_model$sdmod.Jun + dfsts_model$sdmod.Jul + dfsts_model$sdmod.Aug + dfsts_model$sdmod.Sep + dfsts_model$sdmod.Oct + dfsts_model$sdmod.Nov)
+summary(mod2)
+AIC(mod2)
+BIC(mod2)
+```
+```{r}
+dfsts_model$resid <- residuals(mod2)
+plot(dfsts_model$ID, dfsts_model$resid, col="green", type="l", main = "Residuals")
+```
+
+```{r}
+#Decomponse data
+dts_model <- decompose(ts_model)
+plot(dts_model)
+```
+
+```{r}
+#Stationarity
+
+#Stationary Data = a stationary time series is one whose mean and variance is constant over time.
+#Non-stationary data, as a rule, are unpredictable and cannot be modeled or forecasted. The results obtained by using non-stationary time series may be spurious in that they may indicate a relationship between two variables where one does not exist.
+
+#Dickey Fuller Test
+#null hypothesis of a unit root of a univarate time series x (equivalently, x is a non-stationary time series)
+#Alternative hypothesis: 
+adf.test(ts_model)
+
+#The Ljung–Box test/Unit root test
+#H0: The data are independently distributed (i.e. the correlations in the population from which the sample is taken are 0, so that any observed correlations in the data result from randomness of the sampling process).
+#Ha: The data are not independently distributed; they exhibit serial correlation.
+Box.test(ts_model, lag = 1, type = c("Ljung-Box"), fitdf = 0)
+```
+
+```{r}
+#Correlogram
+#A correlogram (also called Auto Correlation Function ACF Plot or Autocorrelation plot) is a visual way to show serial correlation in data that changes over time (i.e. time series data). Serial correlation (also called autocorrelation) is where an error at one point in time travels to a subsequent point in time.
+
+acf(ts_model, main = "ACF")
+pacf(ts_model, main = "PACF")
+```
+
+```{r}
+#AR models
+#An autoregressive (AR) model predicts future behavior based on past behavior. It’s used for forecasting when there is some correlation between values in a time series and the values that precede and succeed them. You only use past data to model the behavior, hence the name autoregressive (the Greek prefix auto– means “self.” ). The process is basically a linear regression of the data in the current series against one or more past values in the same series.
+
+#MA models
+#a moving average model uses past forecast errors in a regression-like model
+
+#ARIMA(p,d,q)
+#A combination of AR (p), differencing (d), and ma (q)
+```
+
+```{r}
+mod3 <- arima(dfsts_model$ts_model, order=c(1,0,0))
+summary(mod3)
+AIC(mod3)
+BIC(mod3)
+
+mod4 <- arima(dfsts_model$ts_model, order=c(0,0,1))
+summary(mod4)
+AIC(mod4)
+BIC(mod4)
+
+mod5 <- arima(dfsts_model$ts_model, order=c(1,1,1))
+summary(mod5)
+AIC(mod5)
+BIC(mod5)
+
+mod6 <- arima(dfsts_model$ts_model, order=c(2,1,1))
+summary(mod6)
+AIC(mod6)
+BIC(mod6)
+
+mod7 <- arima(dfsts_model$ts_model, order=c(2,1,1), xreg=sdmod)
+summary(mod7)
+AIC(mod7)
+BIC(mod7)
+
+mod8 <- auto.arima(dfsts_model$ts_model, xreg=sdmod)
+summary(mod8)
+AIC(mod8)
+BIC(mod8)
+```
+
+```{r}
+plot(mod8$x,col="red", type = "l", xlab = "Date", ylab="Population (Millions)", main = "Active Population: Aged 15-64: All Persons for Japan")
+lines(fitted(mod8),col="blue")
+Corner_text <- function(text, location="topright"){
+  legend(location,legend=text, bty ="n", pch=NA) 
+}
+Corner_text("frequency=monthly")
+Corner_text <- function(text, location="bottomright"){
+  legend(location,legend=text, bty ="n", pch=NA) 
+}
+Corner_text("original series in red and the fitted series in blue")
+```
+
+```{r}
+#Residual
+dfsts_model$resid2 <- residuals(mod8)
+plot(dfsts_model$ID, dfsts_model$resid2, col="green", type="l", main = "Residuals")
+```
+
+```{r}
+#Correlogram
+acf(dfsts_model$resid2, main = "ACF")
+pacf(dfsts_model$resid2, main = "PACF")
+```
+
+```{r}
+df2 <- df[454:566,]
+ts_fcast <- ts(df2$value, start=c(2005,10), end = c(2015,2), frequency = 12)
+sts_fcast <- cbind(ts_fcast, sdfcast)
+
+model2 <- auto.arima(ts_model, xreg= sdmod)
+summary(model2)
+fcast <- forecast(model2, h=113, xreg=sdfcast)
+
+plot(fcast, xlab = "Date", ylab = "Population", main = "Forecasted Population vs Actual Population")
+lines(ts_fcast, col="red")
+legend("topleft",legend=c("Forecast","Actuals"),col=c("blue","red"), lty=1:2, cex=0.8)
+
+accuracy(fcast, x=ts_fcast)
+```
