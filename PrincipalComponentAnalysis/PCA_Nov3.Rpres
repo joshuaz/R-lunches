@@ -1,0 +1,246 @@
+Principal Component Analysis
+========================================================
+author: Joshua Zieve
+date: November 3, 2021
+autosize: true
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Principal Component Analysis
+========================================================
+
+Principal Component Analysis (PCA) attempts to find uncorrelated linear dimensions that capture maximal variance in the data
+
+
+What does that actually mean?
+========================================================
+
+PCA allows you to summarize the data by means of a smaller set of "summary indices" that can more easily visualized and analyzed.
+
+* When faced with a large set of correlated variables, principal components allow us to summarize this set with a smaller number of representative variables that collectively explain most of the variability in the original set. 
+  + In particular, we would like to find a low-dimensional representation of the data that captures as much of the information as possible.
+  + [PCA Visual](https://en.wikipedia.org/wiki/Principal_component_analysis#/media/File:GaussianScatterPCA.svg "PCA visual")
+
+
+Put differently...
+========================================================
+
+PCA is just a rotation of the data onto new axes that capture as much variance as possible, and is not inherently a dimensionality reduction technique 
+
+* (although you can reduce the dimension of the data by retaining only a subset of the PCs)
+
+5 Basic Steps
+========================================================
+
+To do a PCA, you must... 
+
+1. Standardize the range of continuous initial variables
+2. Compute the covariance matrix to identify correlations
+3. Compute the eigenvectors and eigenvalues of the covariance matrix to identify the principal components
+4. Create a feature vector to decide which principal components to keep
+5. Recast the data along the principal components axes
+
+Possible Use Cases
+========================================================
+
+The following is a non-exhaustive list of PCA applications:
+
+* image compression
+* neuroscience: identify the specific properties of a stimulus
+* At Josh's last job, we used PCA to reduce dozens of psychographic survey questions to fewer aggregate variables (for clustering)
+* Any others folks have come across?
+
+Questions?
+========================================================
+
+Exercise
+========================================================
+
+Lets use survey brand data for an example
+
+* Data are ratings of 10 brands (a-j) on 9 adjectives. For each adjective, data are rated on a 1-10 scale. 
+
+```{r echo=FALSE}
+list.of.packages <- c("gplots","ggplot2", "Rcpp","RColorBrewer","corrplot","nFactors","GPArotation","semPlot","tibble")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+#Load Packages
+library(corrplot)
+library(gplots)
+library(RColorBrewer)
+library(nFactors)
+library(GPArotation)
+library(gplots)
+library(semPlot)
+library(tibble)
+```
+
+```{r echo=FALSE}
+brand.ratings<-read.csv("http://goo.gl/IQl8nc")
+brand.sc <- brand.ratings
+```
+
+View Data
+========================================================
+
+```{r echo=FALSE}
+head(brand.ratings)
+```
+
+It's good practice to rescale raw data (Step 1)
+========================================================
+
+* Before
+
+```{r echo = FALSE}
+summary(brand.ratings[,1:9])
+```
+
+It's good practice to rescale raw data (Step 2)
+========================================================
+
+* After
+
+```{r echo = FALSE}
+brand.sc[,1:9] <-scale(brand.ratings[,1:9])
+summary(brand.sc)
+```
+
+Hierarchical Clustering
+========================================================
+
+* hclust puts our items in a hierarchical clustering order
+* Add rectangles around the clusters (we've identified 3 here)
+  + The visualization of the data shows three general clusters: fun/latest/trendy, rebuy/bargain/value, and perform/leader/serious
+
+
+```{r echo = FALSE}
+#corrplot(cor(brand.sc[, 1:9]))
+#corrplot(cor(brand.sc[, 1:9]), order = "hclust")
+corrplot(cor(brand.sc[, 1:9]), order = "hclust", addrect=3)
+```
+
+
+Means
+========================================================
+
+* Look at the average of position of the brand on each adjective
+
+```{r echo = FALSE}
+brand.mean<-aggregate(. ~ brand, data =brand.sc, mean)
+brand.mean
+```
+
+Change Row Labels to Brand names
+========================================================
+
+* Name the rows with the brand labels and then dispense with the brand column because it is redundant
+* Same matrix as before but now row names are brands instead of numbers
+
+```{r echo = FALSE}
+rownames(brand.mean) <- brand.mean[,1]
+brand.mean <- brand.mean[, -1]
+brand.mean
+```
+
+Covariance Matrix (Step 2)
+========================================================
+
+* Name the rows with the brand labels and then dispense with the brand column because it is redundant
+* Same matrix as before but now row names are brands instead of numbers
+
+```{r echo = FALSE}
+cov(brand.ratings[,1:9])
+```
+
+Heat Map (Step 2)
+========================================================
+
+* Use a heatmap to look at intensities of brands on adjectives
+* Notice the groupings: fun/latest/trendy, rebuy/bargain/value, and perform/leader/serious
+
+```{r echo = FALSE}
+heatmap.2(as.matrix(brand.mean), col = brewer.pal(9, "GnBu"), trace ="none", key = FALSE, dend="none", main="\n\n\n\nBrand Attributes")
+```
+
+PCA
+========================================================
+
+* The first principal component direction of the data is that along which the observations vary the most
+* The standard deviations of the principal components (i.e., the square roots of the eigenvalues of the covariance/correlation matrix, though the calculation is actually done with the singular values of the data matrix).
+
+```{r}
+set.seed(98286)	
+
+brand.pc <- prcomp(brand.sc[,1:9])
+brand.pc1 <- prcomp(brand.ratings[,1:9], center = T)
+summary(brand.pc)
+```
+
+PCA
+========================================================
+
+* (you can copy and paste this to excel to conditionally format loadings and sort loadings to see how the factor structure is shaping up)
+
+```{r}
+brand.pc
+```
+
+PCA (Step 4)
+========================================================
+
+* The default plot for a PCA is a scree plot, which shows the successive proportion of additional variance that each component adds.
+* A scree plot is often interpreted as indicating where additional components are not worth the complexity; this occurs at the inflection point.
+  + In this case, it's the third component
+
+```{r}
+plot(brand.pc, type="l")
+```
+
+
+Biplot
+========================================================
+
+* A biplot only shows the first two principal components
+* Instead of X, Y space, we're using PC1, PC2 space
+* Because our first two principal components explained more than 50% of the variance, we feel comfortable using just those two dimensions to explain our data
+
+```{r}
+biplot(brand.pc)
+```
+
+Brand Positioning (Step 5)
+========================================================
+
+* The plot of individual respondents' ratings is too dense and it does not tell us about the brand positions. 
+* A better solution is to perform PCA using aggregated ratings by brand.
+
+
+```{r}
+brand.mu.pc <- prcomp(brand.mean, scale = TRUE)
+summary(brand.mu.pc)
+```
+
+Perceptual Map (Step 5)
+========================================================
+
+* The positions of brands in perceptual maps DO NOT depend on the relative positioning in terms of principal components. The strength of a brand on a single adjective cannot be read directly form the chart.
+* When we use PCA to focus on the first one or two dimensions in the data, we are looking at the largest-magnitude similarities, which may obscure smaller differences that do not show up strongly in the first one or two dimensions.
+
+
+```{r, fig.height=9, fig.width=9}
+biplot(brand.mu.pc, main = "Brand Positioning", cex=c(1.5,1))
+```
+
+Now what?
+========================================================
+
+
+What are possible WaPo use cases?
+========================================================
+
+* Have you used it thus far?
